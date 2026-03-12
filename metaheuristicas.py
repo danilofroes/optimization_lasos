@@ -319,23 +319,294 @@ class ILS(KnapsackProblem):
         plt.ylim(0, max(max(tempos), self.capacidade) * 1.15)
         plt.show()
     
-# class SimulatedAnnealing(KnapsackProblem):
-#     def __init__(self, itens: Dict[str, Dict[str, int]], capacidade: int, 
-#                  temperatura_inicial: float, 
-#                  taxa_decaimento: float, 
-#                  temperatura_final: float = None):
-#         super().__init__(itens, capacidade)
-#         self.temperatura_inicial = temperatura_inicial
-#         self.temperatura_final = temperatura_final
-#         self.taxa_decaimento = taxa_decaimento
-    
-#     @staticmethod
-#     def get_prob_aceitacao(nova_solucao: int, solucao_atual: int, temp: float) -> float:
-#         """Calcula a probabilidade de aceitação de uma nova solução"""
-#         delta_solucao = nova_solucao - solucao_atual
-
-#         if delta_solucao > 0:
-#             return float(nova_solucao)
+class TabuSearch(KnapsackProblem):
+    def __init__(self, itens: Dict[str, Dict[str, int]], capacidade: int, 
+                 interacoes: int = 100, 
+                 tenencia_tabu: int = 5, 
+                 taxa_violacao: int = 20,
+                 seed: int = 42,
+                 str_peso: str = "peso", 
+                 str_valor: str = "valor"):
         
-#         else:
-#             return math.exp(-delta_solucao / temp)
+        super().__init__(itens, capacidade, seed, str_peso, str_valor)
+
+        self.interacoes = interacoes
+        self.tenencia_tabu = tenencia_tabu
+        self.taxa_violacao = taxa_violacao
+        
+        self.str_peso = str_peso
+        self.str_valor = str_valor
+
+        self.historico_tabu = []
+        self.tempo_final_tabu = 0
+
+    def executar_tabu(self, tipo_solucao_inicial: str = "aleatoria") -> Tuple[List[int], int]:
+        print(f"--- Iniciando Busca Tabu (Tenência: {self.tenencia_tabu}, Capacidade: {self.capacidade}) ---")
+
+        self.historico_tabu = []
+        
+        solucao_atual = self.get_solucao(tipo_solucao_inicial)
+        _, _, aval_atual = self.avaliar_solucao(solucao_atual, self.taxa_violacao)
+        
+        self.melhor_solucao = solucao_atual[:]
+        self.melhor_valor = aval_atual
+        
+        lista_tabu = {}
+        
+        self.historico_tabu.append(self.melhor_valor)
+        print(f"Solução Inicial: {aval_atual}")
+
+        for iteracao in range(self.interacoes):
+            melhor_vizinho_iter = None
+            melhor_aval_vizinho_iter = -float('inf')
+            movimento_realizado = -1
+
+            for i in range(self.n_itens):
+                vizinho = solucao_atual[:]
+                vizinho[i] = 1 - vizinho[i]
+                
+                _, _, aval_v = self.avaliar_solucao(vizinho, self.taxa_violacao)
+
+                eh_tabu = (i in lista_tabu) and (lista_tabu[i] > iteracao)
+                
+                aspiracao = eh_tabu and (aval_v > self.melhor_valor)
+
+                if (not eh_tabu or aspiracao):
+                    if aval_v > melhor_aval_vizinho_iter:
+                        melhor_vizinho_iter = vizinho[:]
+                        melhor_aval_vizinho_iter = aval_v
+                        movimento_realizado = i
+
+            if melhor_vizinho_iter is not None:
+                solucao_atual = melhor_vizinho_iter[:]
+                aval_atual = melhor_aval_vizinho_iter
+                
+                lista_tabu[movimento_realizado] = iteracao + self.tenencia_tabu
+
+                if aval_atual > self.melhor_valor:
+                    self.melhor_solucao = solucao_atual[:]
+                    self.melhor_valor = aval_atual
+                    print(f"Iteração {iteracao}: NOVO RECORDE -> {self.melhor_valor} (Movimento no item {movimento_realizado})")
+            
+            self.historico_tabu.append(self.melhor_valor)
+
+        print(f"\nFim da Busca Tabu. Melhor valor encontrado: {self.melhor_valor}")
+
+        _, peso_final, _ = self.avaliar_solucao(self.melhor_solucao, self.taxa_violacao)
+        self.tempo_final_tabu = peso_final
+
+        return self.melhor_solucao, self.melhor_valor
+
+    def plotar_convergencia(self):
+        """Plota a curva de evolução da Busca Tabu"""
+        if not self.historico_tabu:
+            print("Erro: Execute a Busca Tabu primeiro.")
+            return
+        
+        plt.figure(figsize=(10, 5))
+        plt.plot(self.historico_tabu, label='Melhor Solução Global', color='#8e44ad', linewidth=2)
+        plt.title(f'Curva de Convergência (Busca Tabu - Tenência {self.tenencia_tabu})', fontsize=14)
+        plt.xlabel('Iterações', fontsize=12)
+        plt.ylabel('Valor da Função Objetivo', fontsize=12)
+        plt.grid(True, linestyle='--', alpha=0.7)
+        plt.legend()
+        plt.show()
+
+    def plotar_comparativo_lucro(self):
+        """Compara o lucro da Tabu com os gulosos salvos"""
+        metodos = list(self.resultados_gulosos.keys()) + ["Metaheurística (Tabu)"]
+        lucros = [d['valor'] for d in self.resultados_gulosos.values()] + [self.melhor_valor]
+        
+        plt.figure(figsize=(10, 5))
+        barras = plt.bar(metodos, lucros, color=['gray']*len(self.resultados_gulosos) + ['#9b59b6'])
+        
+        plt.title('Comparativo de Lucro Total', fontsize=14)
+        plt.ylabel('Lucro (R$)', fontsize=12)
+        
+        for barra in barras:
+            altura = barra.get_height()
+            plt.text(barra.get_x() + barra.get_width()/2., altura,
+                     f'{int(altura)}', ha='center', va='bottom', fontweight='bold')
+        
+        plt.ylim(0, max(lucros) * 1.15)
+        plt.show()
+
+    def plotar_eficiencia_tempo(self):
+        """Compara o tempo utilizado vs capacidade"""
+        metodos = list(self.resultados_gulosos.keys()) + ["Metaheurística (Tabu)"]
+        tempos = [d['peso'] for d in self.resultados_gulosos.values()] + [self.tempo_final_tabu]
+        
+        plt.figure(figsize=(10, 5))
+        plt.bar(metodos, tempos, color='#3498db', width=0.5)
+        plt.axhline(y=self.capacidade, color='red', linestyle='--', label=f'Turno ({self.capacidade} min)')
+        
+        plt.title('Eficiência de Ocupação do Turno', fontsize=14)
+        plt.ylabel('Tempo Utilizado (min)', fontsize=12)
+        plt.legend()
+        
+        for i, tempo in enumerate(tempos):
+            pct = (tempo / self.capacidade) * 100
+            plt.text(i, tempo + 5, f'{pct:.1f}%', ha='center', fontweight='bold')
+            
+        plt.ylim(0, max(max(tempos), self.capacidade) * 1.15)
+        plt.show()
+
+class SimulatedAnnealing(KnapsackProblem):
+    def __init__(self, itens: Dict[str, Dict[str, int]], capacidade: int, 
+                 temp_inicial: float = 1000.0,
+                 temp_final: float = 1.0,
+                 resfriamento: float = 0.95,
+                 iteracoes_por_temp: int = 50,
+                 taxa_violacao: int = 20,
+                 seed: int = 42,
+                 str_peso: str = "peso", 
+                 str_valor: str = "valor"):
+        
+        super().__init__(itens, capacidade, seed, str_peso, str_valor)
+
+        self.temp_inicial = temp_inicial
+        self.temp_final = temp_final
+        self.resfriamento = resfriamento
+        self.iteracoes_por_temp = iteracoes_por_temp
+        self.taxa_violacao = taxa_violacao
+        
+        self.historico_sa = []
+        self.tempo_final_sa = 0
+
+    def executar_sa(self, tipo_solucao_inicial: str = "aleatoria") -> Tuple[List[int], int]:
+        print(f"--- Iniciando Simulated Annealing (T_ini: {self.temp_inicial}, Alpha: {self.resfriamento}) ---")
+        
+        solucao_atual = self.get_solucao(tipo_solucao_inicial)
+        _, _, aval_atual = self.avaliar_solucao(solucao_atual, self.taxa_violacao)
+        
+        self.melhor_solucao = solucao_atual[:]
+        self.melhor_valor = aval_atual
+        
+        self.historico_sa = [self.melhor_valor]
+        
+        temperatura = self.temp_inicial
+        iteracao_total = 0
+
+        while temperatura > self.temp_final:
+            for _ in range(self.iteracoes_por_temp):
+                idx = random.randint(0, self.n_itens - 1)
+                vizinho = solucao_atual[:]
+                vizinho[idx] = 1 - vizinho[idx]
+                
+                _, _, aval_vizinho = self.avaliar_solucao(vizinho, self.taxa_violacao)
+
+                delta = aval_vizinho - aval_atual
+
+                if delta > 0:
+                    aceitar = True
+                else:
+                    probabilidade = math.exp(delta / temperatura)
+                    aceitar = random.random() < probabilidade
+
+                if aceitar:
+                    solucao_atual = vizinho[:]
+                    aval_atual = aval_vizinho
+                    
+                    if aval_atual > self.melhor_valor:
+                        self.melhor_solucao = solucao_atual[:]
+                        self.melhor_valor = aval_atual
+
+                iteracao_total += 1
+                self.historico_sa.append(self.melhor_valor)
+
+            temperatura *= self.resfriamento
+        
+        print(f"Fim do SA. Melhor valor encontrado: {self.melhor_valor} | Temp Final: {temperatura:.2f}")
+
+        _, peso_final, _ = self.avaliar_solucao(self.melhor_solucao, self.taxa_violacao)
+        self.tempo_final_sa = peso_final
+
+        return self.melhor_solucao, self.melhor_valor
+
+    def plotar_convergencia(self):
+        """Plota a curva de evolução do SA"""
+        if not self.historico_sa:
+            print("Erro: Execute o SA primeiro.")
+            return
+        
+        plt.figure(figsize=(10, 5))
+        plt.plot(self.historico_sa, label='Melhor Solução Global', color='#e67e22', linewidth=2)
+        plt.title('Curva de Convergência (Simulated Annealing)', fontsize=14)
+        plt.xlabel('Iterações Totais', fontsize=12)
+        plt.ylabel('Valor da Função Objetivo', fontsize=12)
+        plt.grid(True, linestyle='--', alpha=0.7)
+        plt.legend()
+        plt.show()
+
+class ComparadorResultados:
+    def __init__(self, capacidade: int):
+        self.capacidade = capacidade
+        self.resultados = {}
+        self.tempos_ocupacao = {}
+        self.gulosos_adicionados = False
+
+    def adicionar_gulosos(self, objeto_instancia):
+        """Pega os resultados gulosos já calculados de uma das instâncias"""
+        if not self.gulosos_adicionados and objeto_instancia.resultados_gulosos:
+            for nome, dados in objeto_instancia.resultados_gulosos.items():
+                self.resultados[nome] = dados['valor']
+                self.tempos_ocupacao[nome] = dados['peso']
+            self.gulosos_adicionados = True
+
+    def adicionar_metaheuristica(self, nome: str, valor_final: int, tempo_final: int):
+        """Adiciona manualmente o resultado de uma metaheurística (ILS, Tabu, SA)"""
+        self.resultados[nome] = valor_final
+        self.tempos_ocupacao[nome] = tempo_final
+
+    def plotar_comparativo_geral_lucro(self):
+        plt.figure(figsize=(12, 6))
+        
+        cores = []
+        for nome in self.resultados:
+            if "Guloso" in nome:
+                cores.append("gray")
+            elif "ILS" in nome:
+                cores.append("#27ae60")
+            elif "Tabu" in nome:
+                cores.append("#8e44ad")
+            elif "Annealing" in nome:
+                cores.append("#e67e22")
+            else:
+                cores.append("#3498db")
+
+        barras = plt.bar(list(self.resultados.keys()), list(self.resultados.values()), color=cores)
+        
+        plt.title('Comparativo GLOBAL de Lucro', fontsize=16)
+        plt.ylabel('Lucro Total', fontsize=12)
+        plt.xticks(rotation=15)
+        
+        for barra in barras:
+            altura = barra.get_height()
+            plt.text(barra.get_x() + barra.get_width()/2., altura,
+                     f'{int(altura)}', ha='center', va='bottom', fontweight='bold')
+        
+        plt.tight_layout()
+        plt.show()
+
+    def plotar_comparativo_geral_tempo(self):
+        plt.figure(figsize=(12, 6))
+        
+        nomes = list(self.tempos_ocupacao.keys())
+        valores = list(self.tempos_ocupacao.values())
+        
+        plt.bar(nomes, valores, color='#34495e', alpha=0.9)
+        plt.axhline(y=self.capacidade, color='red', linestyle='--', linewidth=2, label=f'Limite ({self.capacidade})')
+        
+        plt.title('Comparativo GLOBAL de Ocupação', fontsize=16)
+        plt.ylabel('Tempo Utilizado', fontsize=12)
+        plt.xticks(rotation=15)
+        plt.legend()
+        
+        for i, tempo in enumerate(valores):
+            pct = (tempo / self.capacidade) * 100
+            cor_texto = 'red' if tempo > self.capacidade else 'black'
+            plt.text(i, tempo + (self.capacidade * 0.02), f'{pct:.1f}%', 
+                     ha='center', fontweight='bold', color=cor_texto)
+            
+        plt.tight_layout()
+        plt.show()
