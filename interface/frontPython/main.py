@@ -25,6 +25,7 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 import matplotlib.pyplot as plt
 
 # Função para gerar instâncias de produção aleatórias
+def get_dict_producao(qntd_itens: int, tempo_max: int, lucro_max: int, seed: int = 42) -> dict:
     np.random.seed(seed) # Usamos a seed aqui para garantir a mesma instância sempre
     dict_producao = {}
     for i in range(1, qntd_itens + 1):
