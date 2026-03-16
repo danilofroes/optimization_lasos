@@ -86,11 +86,25 @@ std::vector<int> ILS::perturbarSolucao(const std::vector<int>& solucao) {
 
 /// @brief Método para gerar uma solução aleatória
 std::vector<int> ILS::gerarSolucaoAleatoria() {
-    std::vector<int> solucao(itens.size());
-    std::uniform_int_distribution<int> dist(0, 1);
-    for(size_t i = 0; i < itens.size(); ++i) {
-        solucao[i] = dist(rng);
+    std::vector<int> solucao(itens.size(), 0); // Começa tudo com 0
+    
+    // Cria um vetor de índices [0, 1, 2, ..., N-1]
+    std::vector<int> indices(itens.size());
+    std::iota(indices.begin(), indices.end(), 0);
+    
+    // Embaralha a ordem de avaliação dos itens
+    std::shuffle(indices.begin(), indices.end(), rng);
+    
+    int peso_atual = 0;
+    
+    // Coloca os itens aleatoriamente até a mochila encher
+    for(int idx : indices) {
+        if(peso_atual + itens[idx].peso <= capacidade) {
+            solucao[idx] = 1;
+            peso_atual += itens[idx].peso;
+        }
     }
+    
     return solucao;
 }
 
