@@ -21,4 +21,5 @@ pybind11_add_module(
     src/ILS.cpp 
     src/tabuSearch.cpp 
     src/simulatedAnnealing.cpp
+    src/greedy.cpp
 )

@@ -40,7 +40,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Otimizador com Metaheurísticas - LASOS")
-        self.resize(1100, 700)
+        self.resize(1100, 750)
 
         widget_central = QWidget()
         self.setCentralWidget(widget_central)
@@ -54,15 +54,29 @@ class MainWindow(QMainWindow):
         # Seleção de algoritmos a executar
         grupo_algoritmos = QGroupBox("Algoritmos a Executar")
         layout_algos = QVBoxLayout()
+        
+        # Checkboxes Meta-heurísticas
         self.cb_ils = QCheckBox("Iterated Local Search (ILS)")
         self.cb_tabu = QCheckBox("Tabu Search (TS)")
         self.cb_sa = QCheckBox("Simulated Annealing (SA)")
         self.cb_ils.setChecked(True)
-        self.cb_tabu.setChecked(True) # Ambos marcados por padrão
+        self.cb_tabu.setChecked(True)
         self.cb_sa.setChecked(True)
+        
+        # Checkboxes Gulosos (Baselines)
+        self.cb_guloso_valor = QCheckBox("Guloso (Por Valor)")
+        self.cb_guloso_peso = QCheckBox("Guloso (Por Menor Peso)")
+        self.cb_guloso_densidade = QCheckBox("Guloso (Por Densidade)")
+        self.cb_guloso_densidade.setChecked(True) # Densidade costuma ser o melhor baseline por isso já fica marcado
+
         layout_algos.addWidget(self.cb_ils)
         layout_algos.addWidget(self.cb_tabu)
         layout_algos.addWidget(self.cb_sa)
+        layout_algos.addWidget(QLabel("<i>Baselines:</i>")) # Separador visual
+        layout_algos.addWidget(self.cb_guloso_valor)
+        layout_algos.addWidget(self.cb_guloso_peso)
+        layout_algos.addWidget(self.cb_guloso_densidade)
+        
         grupo_algoritmos.setLayout(layout_algos)
         layout_esq.addWidget(grupo_algoritmos)
 
@@ -126,6 +140,25 @@ class MainWindow(QMainWindow):
         self.caixa_log.append(mensagem)
         QApplication.processEvents() 
 
+    def executar_guloso(self, config_base, estrategia, label, cor):
+        """Função auxiliar para rodar e plotar os gulosos sem repetir código"""
+        self.log(f"\nIniciando {label}...")
+        config_guloso = config_base.copy()
+        config_guloso["estrategia"] = estrategia
+
+        guloso = meta_engine.Greedy()
+        guloso.setParametros(config_guloso)
+        guloso.solve()
+
+        res = guloso.getResultados()
+        lucro = res.get('melhor_valor')
+        self.log(f"   ↳ Lucro Máximo: R$ {lucro}")
+        self.log(f"   ↳ Tempo: {res.get('tempo_final_ils')}/{config_base['capacidade']} min")
+        
+        # Desenha uma linha tracejada horizontal para a baseline
+        self.ax.axhline(y=lucro, color=cor, linestyle='--', alpha=0.8, label=label)
+        return True
+
     def rodar_otimizacao(self):
         self.caixa_log.clear()
         self.ax.clear()
@@ -149,9 +182,19 @@ class MainWindow(QMainWindow):
 
         rodou_alguma = False
 
+        # Execução dos algoritmos gulosos (baselines)
+        if self.cb_guloso_valor.isChecked():
+            rodou_alguma = self.executar_guloso(config_base, "valor", "Guloso (Valor)", "green")
+            
+        if self.cb_guloso_peso.isChecked():
+            rodou_alguma = self.executar_guloso(config_base, "peso", "Guloso (Peso)", "blue")
+            
+        if self.cb_guloso_densidade.isChecked():
+            rodou_alguma = self.executar_guloso(config_base, "densidade", "Guloso (Densidade)", "black")
+
         # Execução do ILS
         if self.cb_ils.isChecked():
-            self.log("\n⚙️ Iniciando Iterated Local Search (ILS)...")
+            self.log("\nIniciando Iterated Local Search (ILS)...")
             config_ils = config_base.copy()
             config_ils["nivel_perturbacao"] = int(self.in_perturbacao.text())
             config_ils["limite_sem_melhora"] = int(self.in_limite_sem_melhora.text())
@@ -164,14 +207,13 @@ class MainWindow(QMainWindow):
             self.log(f"   ↳ Lucro Máximo: R$ {res_ils.get('melhor_valor')}")
             self.log(f"   ↳ Tempo: {res_ils.get('tempo_final_ils')}/{capacidade} min")
             
-            # Plota a linha do ILS em Azul
             hist_ils = res_ils.get("historico_ils", [])
-            self.ax.plot(hist_ils, label='ILS', color='#2980b9', linewidth=2)
+            self.ax.plot(hist_ils, label='ILS', color="#352f8b", linewidth=2)
             rodou_alguma = True
 
         # Execução do Tabu Search
         if self.cb_tabu.isChecked():
-            self.log("\n⚙️ Iniciando Tabu Search...")
+            self.log("\nIniciando Tabu Search...")
             config_tabu = config_base.copy()
             config_tabu["tenencia_tabu"] = int(self.in_tenencia.text())
 
@@ -183,14 +225,13 @@ class MainWindow(QMainWindow):
             self.log(f"   ↳ Lucro Máximo: R$ {res_tabu.get('melhor_valor')}")
             self.log(f"   ↳ Tempo: {res_tabu.get('tempo_final_ils')}/{capacidade} min")
             
-            # Plota a linha do Tabu em Laranja
             hist_tabu = res_tabu.get("historico_ils", [])
-            self.ax.plot(hist_tabu, label='Tabu Search', color='#e67e22', linewidth=2)
+            self.ax.plot(hist_tabu, label='Tabu Search', color="#ff0000", linewidth=2)
             rodou_alguma = True
 
         # Execução do Simulated Annealing
         if self.cb_sa.isChecked():
-            self.log("\n⚙️ Iniciando Simulated Annealing (SA)...")
+            self.log("\nIniciando Simulated Annealing (SA)...")
             config_sa = config_base.copy()
             config_sa["temperatura_inicial"] = float(self.in_temp_inicial.text())
             config_sa["taxa_resfriamento"] = float(self.in_resfriamento.text())
@@ -203,9 +244,8 @@ class MainWindow(QMainWindow):
             self.log(f"   ↳ Lucro Máximo: R$ {res_sa.get('melhor_valor')}")
             self.log(f"   ↳ Tempo: {res_sa.get('tempo_final_ils')}/{capacidade} min")
             
-            # Plota a linha do SA em Verde
             hist_sa = res_sa.get("historico_ils", [])
-            self.ax.plot(hist_sa, label='SA', color='#27ae60', linewidth=2)
+            self.ax.plot(hist_sa, label='SA', color="#CC720B", linewidth=2)
             rodou_alguma = True
 
         if rodou_alguma:
@@ -214,7 +254,7 @@ class MainWindow(QMainWindow):
             self.ax.set_xlabel('Iterações', fontsize=11)
             self.ax.set_ylabel('Lucro Global Encontrado (R$)', fontsize=11)
             self.ax.grid(True, linestyle='--', alpha=0.7)
-            self.ax.legend(loc="lower right") # Mostra a legenda identificando as cores
+            self.ax.legend(loc="lower right")
             self.canvas.draw()
         else:
             self.log("\n⚠️ Nenhum algoritmo foi selecionado para rodar.")
