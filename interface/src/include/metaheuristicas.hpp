@@ -4,7 +4,7 @@
 #include <vector>
 
 // configuração da biblioteca para gerar json
-#include "libs/json.hpp"
+#include <json.hpp>
 using json = nlohmann::json;
 
 /**
