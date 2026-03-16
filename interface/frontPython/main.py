@@ -56,10 +56,13 @@ class MainWindow(QMainWindow):
         layout_algos = QVBoxLayout()
         self.cb_ils = QCheckBox("Iterated Local Search (ILS)")
         self.cb_tabu = QCheckBox("Tabu Search (TS)")
+        self.cb_sa = QCheckBox("Simulated Annealing (SA)")
         self.cb_ils.setChecked(True)
         self.cb_tabu.setChecked(True) # Ambos marcados por padrão
+        self.cb_sa.setChecked(True)
         layout_algos.addWidget(self.cb_ils)
         layout_algos.addWidget(self.cb_tabu)
+        layout_algos.addWidget(self.cb_sa)
         grupo_algoritmos.setLayout(layout_algos)
         layout_esq.addWidget(grupo_algoritmos)
 
@@ -84,11 +87,15 @@ class MainWindow(QMainWindow):
         self.in_perturbacao = QLineEdit("5")
         self.in_tenencia = QLineEdit("10")
         self.in_limite_sem_melhora = QLineEdit("100")
+        self.in_temp_inicial = QLineEdit("1000.0")
+        self.in_resfriamento = QLineEdit("0.99")
         
         form_params.addRow("Iterações Totais:", self.in_iteracoes)
         form_params.addRow("ILS - Nível de Perturbação:", self.in_perturbacao)
         form_params.addRow("ILS - Limite de Estagnação:", self.in_limite_sem_melhora)
         form_params.addRow("TABU - Tenência (Memória):", self.in_tenencia)
+        form_params.addRow("SA - Temp. Inicial:", self.in_temp_inicial)
+        form_params.addRow("SA - Taxa Resfriamento:", self.in_resfriamento)
         grupo_params.setLayout(form_params)
         layout_esq.addWidget(grupo_params)
 
@@ -162,7 +169,7 @@ class MainWindow(QMainWindow):
             self.ax.plot(hist_ils, label='ILS', color='#2980b9', linewidth=2)
             rodou_alguma = True
 
-        #  Execução do Tabu Search
+        # Execução do Tabu Search
         if self.cb_tabu.isChecked():
             self.log("\n⚙️ Iniciando Tabu Search...")
             config_tabu = config_base.copy()
@@ -174,12 +181,31 @@ class MainWindow(QMainWindow):
 
             res_tabu = tabu.getResultados()
             self.log(f"   ↳ Lucro Máximo: R$ {res_tabu.get('melhor_valor')}")
-            # Usando a mesma chave 'tempo_final_ils' porque o C++ reaproveitou o nome no JSON
             self.log(f"   ↳ Tempo: {res_tabu.get('tempo_final_ils')}/{capacidade} min")
             
-            # Plota a linha do Tabu em Laranja/Vermelho
+            # Plota a linha do Tabu em Laranja
             hist_tabu = res_tabu.get("historico_ils", [])
             self.ax.plot(hist_tabu, label='Tabu Search', color='#e67e22', linewidth=2)
+            rodou_alguma = True
+
+        # Execução do Simulated Annealing
+        if self.cb_sa.isChecked():
+            self.log("\n⚙️ Iniciando Simulated Annealing (SA)...")
+            config_sa = config_base.copy()
+            config_sa["temperatura_inicial"] = float(self.in_temp_inicial.text())
+            config_sa["taxa_resfriamento"] = float(self.in_resfriamento.text())
+
+            sa = meta_engine.SimulatedAnnealing()
+            sa.setParametros(config_sa)
+            sa.solve()
+
+            res_sa = sa.getResultados()
+            self.log(f"   ↳ Lucro Máximo: R$ {res_sa.get('melhor_valor')}")
+            self.log(f"   ↳ Tempo: {res_sa.get('tempo_final_ils')}/{capacidade} min")
+            
+            # Plota a linha do SA em Verde
+            hist_sa = res_sa.get("historico_ils", [])
+            self.ax.plot(hist_sa, label='SA', color='#27ae60', linewidth=2)
             rodou_alguma = True
 
         if rodou_alguma:

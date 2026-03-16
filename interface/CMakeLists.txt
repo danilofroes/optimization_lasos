@@ -15,4 +15,10 @@ find_package(pybind11 REQUIRED)
 include_directories(include)
 include_directories(libs)
 
-pybind11_add_module(meta_engine src/bindings.cpp src/ILS.cpp src/TabuSearch.cpp)
+pybind11_add_module(
+    meta_engine 
+    src/bindings.cpp 
+    src/ILS.cpp 
+    src/tabuSearch.cpp 
+    src/simulatedAnnealing.cpp
+)
